@@ -20,7 +20,7 @@ function jsonError(message: string, status: number): Response {
 export default {
     async fetch(request: Request, env: Env, ctx:ExecutionContext): Promise<Response> {
         const url = new URL(request.url);
-    
+
         if (
             request.method === 'POST' &&
             url.pathname === '/discord/event'
@@ -28,7 +28,7 @@ export default {
             if (request.headers.get('Authorization') !== env.MASTER_TOKEN) {
                 return jsonError('Unauthorized', 401);
             }
-            
+
             try {
                 request = await handleDiscordEvent(request, env);
             }
@@ -41,7 +41,7 @@ export default {
             }
 
         }
-    
+
         try {
             return await tryPrimaries(request, env);
         } catch (error) {
@@ -53,9 +53,8 @@ export default {
         }
     }
 }
-  
+
 async function handleDiscordEvent(request: Request, env: Env): Promise<Request> {
-    const clonedRequest = request.clone();
     const body = await request.text();
 
     const bodyHash = await crypto.subtle.digest(
@@ -74,12 +73,17 @@ async function handleDiscordEvent(request: Request, env: Env): Promise<Request> 
     }
 
     await env.DISCORD_EVENTS.put(key, '1', { expirationTtl: 300 });
-    return clonedRequest;
+    return new Request(request.url, {
+        method: request.method,
+        headers: request.headers,
+        body: body,
+        redirect: request.redirect
+    });
 }
-  
+
 async function tryPrimaries(request: Request, env: Env): Promise<Response> {
     const availableOrigins = [...env.PRIMARY_ORIGINS];
-  
+
     while (availableOrigins.length > 0) {
         const origin = selectOrigin(availableOrigins);
         try {
@@ -91,14 +95,14 @@ async function tryPrimaries(request: Request, env: Env): Promise<Response> {
             }
         }
     }
-  
+
     throw new Error('All origins failed');
 }
-  
+
 async function tryOrigin(origin: string, request: Request): Promise<Response> {
     const url = new URL(request.url);
     const newUrl = new URL(url.pathname + url.search, origin);
-  
+
     const modifiedRequest = new Request(newUrl, {
         method: request.method,
         headers: request.headers,
@@ -107,14 +111,14 @@ async function tryOrigin(origin: string, request: Request): Promise<Response> {
     });
 
     const response = await fetch(modifiedRequest);
-  
+
     if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
     }
-  
+
     return response;
   }
-  
+
 function selectOrigin(origins: { url: string, weight: number }[]): { url: string, weight: number } {
     if (origins.length === 1) {
         return origins[0];
@@ -122,7 +126,7 @@ function selectOrigin(origins: { url: string, weight: number }[]): { url: string
 
     const totalWeight = origins.reduce((sum, origin) => sum + origin.weight, 0);
     const random = Math.random() * totalWeight;
-  
+
     let weightSum = 0;
     for (const origin of origins) {
         weightSum += origin.weight;
@@ -130,7 +134,6 @@ function selectOrigin(origins: { url: string, weight: number }[]): { url: string
             return origin;
         }
     }
-  
+
     return origins[0];
 }
-  

@@ -56,7 +56,7 @@ export default {
   
 async function handleDiscordEvent(request: Request, env: Env): Promise<Request> {
     const clonedRequest = request.clone();
-    const body = await request.text();
+    const body = await clonedRequest.text();
 
     const bodyHash = await crypto.subtle.digest(
         'SHA-256',

@@ -21,6 +21,8 @@ export default {
     async fetch(request: Request, env: Env, ctx:ExecutionContext): Promise<Response> {
         const url = new URL(request.url);
 
+        const body = await request.text();
+
         if (
             request.method === 'POST' &&
             url.pathname === '/discord/event'
@@ -30,9 +32,8 @@ export default {
             }
 
             try {
-                request = await handleDiscordEvent(request, env);
-            }
-            catch (error) {
+                await handleDiscordEvent(body, env);
+            } catch (error) {
                 if (error instanceof Error && error.message === 'DUPLICATE_EVENT') {
                     return new Response('DUPLICATE_EVENT', { status: 200 });
                 }
@@ -43,10 +44,10 @@ export default {
         }
 
         try {
-            return await tryPrimaries(request, env);
+            return await tryPrimaries(request, env, body);
         } catch (error) {
             try {
-                return tryOrigin(env.FALLBACK_ORIGIN, request);
+                return tryOrigin(env.FALLBACK_ORIGIN, request, body);
             } catch (error) {
                 return jsonError('Internal Server Error', 500);
             }
@@ -54,9 +55,7 @@ export default {
     }
 }
 
-async function handleDiscordEvent(request: Request, env: Env): Promise<Request> {
-    const body = await request.text();
-
+async function handleDiscordEvent(body: string, env: Env): Promise<Boolean> {
     const bodyHash = await crypto.subtle.digest(
         'SHA-256',
         new TextEncoder().encode(body)
@@ -73,21 +72,16 @@ async function handleDiscordEvent(request: Request, env: Env): Promise<Request> 
     }
 
     await env.DISCORD_EVENTS.put(key, '1', { expirationTtl: 300 });
-    return new Request(request.url, {
-        method: request.method,
-        headers: request.headers,
-        body: body,
-        redirect: request.redirect
-    });
+    return true;
 }
 
-async function tryPrimaries(request: Request, env: Env): Promise<Response> {
+async function tryPrimaries(request: Request, env: Env, body: string): Promise<Response> {
     const availableOrigins = [...env.PRIMARY_ORIGINS];
 
     while (availableOrigins.length > 0) {
         const origin = selectOrigin(availableOrigins);
         try {
-            return await tryOrigin(origin.url, request);
+            return await tryOrigin(origin.url, request, body);
         } catch (error) {
             const failedIndex = availableOrigins.findIndex(o => o.url === origin.url);
             if (failedIndex > -1) {
@@ -99,14 +93,14 @@ async function tryPrimaries(request: Request, env: Env): Promise<Response> {
     throw new Error('All origins failed');
 }
 
-async function tryOrigin(origin: string, request: Request): Promise<Response> {
+async function tryOrigin(origin: string, request: Request, body: string): Promise<Response> {
     const url = new URL(request.url);
     const newUrl = new URL(url.pathname + url.search, origin);
 
     const modifiedRequest = new Request(newUrl, {
         method: request.method,
         headers: request.headers,
-        body: request.body,
+        body: body,
         redirect: 'follow'
     });
 

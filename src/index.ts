@@ -18,7 +18,7 @@ function jsonError(message: string, status: number): Response {
 
 
 export default {
-    async fetch(request: Request, env: Env, ctx:ExecutionContext): Promise<Response> {
+    async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
         const url = new URL(request.url);
 
         const body = await request.text();
@@ -97,12 +97,21 @@ async function tryOrigin(origin: string, request: Request, body: string): Promis
     const url = new URL(request.url);
     const newUrl = new URL(url.pathname + url.search, origin);
 
-    const modifiedRequest = new Request(newUrl, {
-        method: request.method,
-        headers: request.headers,
-        body: body,
-        redirect: 'follow'
-    });
+    let modifiedRequest;
+    if (request.method === 'GET' || request.method === 'HEAD') {
+        modifiedRequest = new Request(newUrl, {
+            method: request.method,
+            headers: request.headers,
+            redirect: 'follow'
+        });
+    } else {
+        modifiedRequest = new Request(newUrl, {
+            method: request.method,
+            headers: request.headers,
+            body: body,
+            redirect: 'follow'
+        });
+    }
 
     const response = await fetch(modifiedRequest);
 

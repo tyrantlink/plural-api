@@ -27,10 +27,6 @@ export default {
             request.method === 'POST' &&
             url.pathname === '/discord/event'
         ) {
-            if (request.headers.get('Authorization') !== env.MASTER_TOKEN) {
-                return jsonError('Unauthorized', 401);
-            }
-
             try {
                 await handleDiscordEvent(body, env);
             } catch (error) {
@@ -119,7 +115,15 @@ async function tryOrigin(origin: string, request: Request, body: string): Promis
         throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    return response;
+    // add CORS headers
+    const newHeaders = new Headers(response.headers);
+    newHeaders.set('access-control-allow-origin', '*');
+
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: newHeaders
+    });
   }
 
 function selectOrigin(origins: { url: string, weight: number }[]): { url: string, weight: number } {
